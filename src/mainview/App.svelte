@@ -101,7 +101,36 @@
     if (!electroview) return;
     await electroview.rpc.request.deleteSnippetFromArchive({ id });
   }
+
+  function handleSystemKeydown(e: KeyboardEvent) {
+    const mod = navigator.platform.includes("Mac") ? e.metaKey : e.ctrlKey;
+    if (!mod) return;
+
+    const el = document.activeElement;
+    const isInput = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el?.getAttribute?.("contenteditable") === "true";
+
+    if (e.key === "a" && isInput) {
+      e.preventDefault();
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+        el.select();
+      }
+    } else if (e.key === "z" && !e.shiftKey && isInput) {
+      e.preventDefault();
+      document.execCommand("undo");
+    } else if (e.key === "Z" && e.shiftKey && isInput) {
+      e.preventDefault();
+      document.execCommand("redo");
+    } else if (e.key === "x" && isInput) {
+      e.preventDefault();
+      document.execCommand("cut");
+    } else if (e.key === "c" && isInput) {
+      e.preventDefault();
+      document.execCommand("copy");
+    }
+  }
 </script>
+
+<svelte:window onkeydown={handleSystemKeydown} />
 
 <div class="app-shell">
   <header class="header">

@@ -59,7 +59,7 @@
   function handleKeyDown(e: KeyboardEvent) {
     if (!recording) return;
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
 
     const parts: string[] = [];
 
