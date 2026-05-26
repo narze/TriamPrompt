@@ -1,15 +1,16 @@
 {
-	"name": "electrobun-svelte",
-	"version": "1.0.0",
-	"type": "module",
-	"description": "Electrobun app with Svelte and Vite HMR",
+  "name": "triamprompt",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Text snippet clipboard manager for queueing AI prompts",
 	"scripts": {
 		"start": "vite build && electrobun dev",
 		"dev": "electrobun dev --watch",
 		"dev:hmr": "concurrently \"bun run hmr\" \"bun run start\"",
 		"hmr": "vite --port 5173",
-		"build:canary": "vite build && electrobun build --env=canary"
-	},
+    "build:canary": "vite build && electrobun build --env=canary",
+    "test": "bun test"
+  },
 	"dependencies": {
 		"electrobun": "1.18.1"
 	},

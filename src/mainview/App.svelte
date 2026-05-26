@@ -1,239 +1,225 @@
 <script lang="ts">
-  let count = $state(0);
+  import { Electroview } from "electrobun/view";
+  import type { TriamPromptRPC, Snippet, Block } from "../../shared/types";
+  import Composer from "./Composer.svelte";
+  import SnippetList from "./SnippetList.svelte";
 
-  function increment() {
-    count += 1;
+  let queue = $state<Snippet[]>([]);
+  let archive = $state<Snippet[]>([]);
+  let activeTab = $state<"queue" | "archive">("queue");
+  let rpcReady = $state(false);
+  let rpcError = $state<string | null>(null);
+
+  let electroview: Electroview | null = null;
+
+  try {
+    const rpc = Electroview.defineRPC<TriamPromptRPC>({
+      handlers: {
+        requests: {},
+        messages: {
+          stateChanged: ({ queue: q, archive: a }) => {
+            queue = q;
+            archive = a;
+          },
+        },
+      },
+    });
+
+    electroview = new Electroview({ rpc });
+    rpcReady = true;
+  } catch (e: any) {
+    console.error("Electroview init failed:", e);
+    rpcError = String(e?.message ?? e);
   }
 
-  function reset() {
-    count = 0;
+  $effect(() => {
+    if (electroview && rpcReady) {
+      electroview.rpc.request.getState({}).then((state) => {
+        queue = state.queue;
+        archive = state.archive;
+      });
+    }
+  });
+
+  async function handleAddSnippet(blocks: Block[]) {
+    if (!electroview) return;
+    await electroview.rpc.request.addSnippet({ blocks });
+  }
+
+  async function handlePaste(id: string) {
+    if (!electroview) return;
+    await electroview.rpc.request.pasteSnippet({ id });
+  }
+
+  async function handleRemove(id: string) {
+    if (!electroview) return;
+    await electroview.rpc.request.removeSnippet({ id });
+  }
+
+  async function handleReorder(ids: string[]) {
+    if (!electroview) return;
+    await electroview.rpc.request.reorderSnippets({ ids });
+  }
+
+  async function handleRestore(id: string) {
+    if (!electroview) return;
+    await electroview.rpc.request.restoreSnippet({ id });
   }
 </script>
 
-<main>
-  <div class="container">
-    <h1>Svelte + Electrobun</h1>
-    <p class="subtitle">A fast desktop app with hot module replacement</p>
+<div class="app-shell">
+  <header class="header">
+    <span class="logo">TriamPrompt</span>
 
-    <div class="card">
-      <h2>Interactive Counter</h2>
-      <p>
-        Click the button below to test Svelte reactivity. With HMR enabled, you
-        can edit this component and see changes instantly without losing state.
-      </p>
-      <div class="button-group">
-        <button class="primary" onclick={increment}>
-          Count: {count}
-        </button>
-        <button class="secondary" onclick={reset}>
-          Reset
-        </button>
+    <div class="tabs">
+      <button
+        class="tab"
+        class:active={activeTab === "queue"}
+        onclick={() => (activeTab = "queue")}
+      >
+        Queue
+        {#if queue.length > 0}
+          <span class="badge">{queue.length}</span>
+        {/if}
+      </button>
+      <button
+        class="tab"
+        class:active={activeTab === "archive"}
+        onclick={() => (activeTab = "archive")}
+      >
+        Archive
+        {#if archive.length > 0}
+          <span class="badge">{archive.length}</span>
+        {/if}
+      </button>
+    </div>
+  </header>
+
+  {#if rpcError}
+    <div class="error-banner">
+      Connection error: {rpcError}
+    </div>
+  {/if}
+
+  {#if !rpcReady && !rpcError}
+    <div class="loading">
+      Connecting to TriamPrompt...
+    </div>
+  {:else}
+    <div class="content">
+      {#if activeTab === "queue"}
+        <SnippetList
+          items={queue}
+          mode="queue"
+          onpaste={handlePaste}
+          onremove={handleRemove}
+          onreorder={handleReorder}
+        />
+      {:else}
+        <SnippetList
+          items={archive}
+          mode="archive"
+          onrestore={handleRestore}
+          onremove={handleRemove}
+          onpaste={() => {}}
+          onreorder={() => {}}
+        />
+      {/if}
+    </div>
+
+    {#if activeTab === "queue"}
+      <div class="composer-wrapper">
+        <Composer oncommit={handleAddSnippet} />
       </div>
-    </div>
-
-    <div class="card">
-      <h2>Getting Started</h2>
-      <ul>
-        <li>
-          <span class="number">1.</span>
-          Run <code>bun run dev</code> for development without HMR
-        </li>
-        <li>
-          <span class="number">2.</span>
-          Run <code>bun run dev:hmr</code> for development with hot reload
-        </li>
-        <li>
-          <span class="number">3.</span>
-          Run <code>bun run build</code> to build for production
-        </li>
-      </ul>
-    </div>
-
-    <div class="card">
-      <h2>Stack</h2>
-      <div class="stack-grid">
-        <div class="stack-item">
-          <span class="icon">⚡</span>
-          <span>Electrobun</span>
-        </div>
-        <div class="stack-item">
-          <span class="icon">🔶</span>
-          <span>Svelte 5</span>
-        </div>
-        <div class="stack-item">
-          <span class="icon">🔥</span>
-          <span>Vite HMR</span>
-        </div>
-        <div class="stack-item">
-          <span class="icon">📦</span>
-          <span>Bun</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="footer">
-      <p>
-        Edit <code>src/mainview/App.svelte</code> and save to see HMR in action
-      </p>
-    </div>
-  </div>
-</main>
+    {/if}
+  {/if}
+</div>
 
 <style>
-  main {
-    min-height: 100vh;
-    background: linear-gradient(135deg, #ff3e00 0%, #ff6b35 100%);
-    padding: 40px 20px;
-  }
-
-  .container {
-    max-width: 800px;
-    margin: 0 auto;
-  }
-
-  h1 {
-    color: white;
-    font-size: 3rem;
-    text-align: center;
-    margin-bottom: 8px;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  }
-
-  .subtitle {
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 1.25rem;
-    text-align: center;
-    margin-top: 0;
-    margin-bottom: 40px;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  }
-
-  .card {
-    background: white;
-    border-radius: 12px;
-    padding: 30px;
-    margin-bottom: 20px;
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-  }
-
-  h2 {
-    color: #ff3e00;
-    margin-top: 0;
-    margin-bottom: 15px;
-  }
-
-  p {
-    color: #666;
-    line-height: 1.6;
-  }
-
-  .button-group {
+  .app-shell {
     display: flex;
-    gap: 12px;
-    margin-top: 20px;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
   }
 
-  button {
-    padding: 12px 24px;
-    font-size: 1rem;
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+
+  .logo {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+  }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+  }
+
+  .tab {
+    background: transparent;
+    color: var(--text-muted);
+    padding: 4px 12px;
+    font-size: 12px;
     font-weight: 500;
-    border: none;
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  button.primary {
-    background: #ff3e00;
-    color: white;
-    box-shadow: 0 2px 4px rgba(255, 62, 0, 0.3);
-  }
-
-  button.primary:hover {
-    background: #e63600;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(255, 62, 0, 0.4);
-  }
-
-  button.secondary {
-    background: #f0f0f0;
-    color: #666;
-  }
-
-  button.secondary:hover {
-    background: #e0e0e0;
-  }
-
-  ul {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-
-  li {
     display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 10px 0;
-    color: #666;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius);
   }
 
-  .number {
-    color: #ff3e00;
-    font-weight: bold;
+  .tab:hover {
+    background: var(--surface-hover);
+    color: var(--text);
   }
 
-  code {
-    background: #f5f5f5;
-    color: #555;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-family: "Monaco", "Menlo", monospace;
-    font-size: 0.9em;
+  .tab.active {
+    background: var(--surface-active);
+    color: var(--text);
   }
 
-  .stack-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 15px;
-  }
-
-  .stack-item {
-    text-align: center;
-    padding: 20px 10px;
-    background: #fafafa;
-    border-radius: 8px;
-  }
-
-  .icon {
-    display: block;
-    font-size: 2rem;
-    margin-bottom: 8px;
-  }
-
-  .footer {
-    text-align: center;
-    color: rgba(255, 255, 255, 0.8);
-    margin-top: 30px;
-    padding: 20px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 8px;
-    backdrop-filter: blur(10px);
-  }
-
-  .footer p {
-    color: inherit;
-    margin: 0;
-  }
-
-  .footer code {
-    background: rgba(255, 255, 255, 0.2);
+  .badge {
+    background: var(--accent);
     color: white;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-weight: 600;
   }
 
-  @media (max-width: 600px) {
-    .stack-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
+  .loading {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  .error-banner {
+    padding: 10px 12px;
+    background: var(--danger);
+    color: white;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    word-break: break-all;
+  }
+
+  .content {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .composer-wrapper {
+    flex-shrink: 0;
   }
 </style>
