@@ -380,7 +380,20 @@ async function main() {
           console.error("[paste] helper not available");
           return false;
         }
-        const targetPID = lastFocusedAppPID ?? undefined;
+        let targetPID = lastFocusedAppPID;
+        if (targetPID === null) {
+          const fallbackPID = getInitialFrontmostPID(process.pid);
+          if (fallbackPID !== null) {
+            console.log(`[paste] fallback to current frontmost pid=${fallbackPID}`);
+            lastFocusedAppPID = fallbackPID;
+            targetPID = fallbackPID;
+          } else {
+            // TriamPrompt itself is frontmost; use our own PID so the helper
+            // explicitly activates us before posting the keystroke.
+            console.log(`[paste] fallback to self pid=${process.pid}`);
+            targetPID = process.pid;
+          }
+        }
         console.log(`[paste] CGEventPostToPid target=${targetPID}`);
         const ok = await runPasteHelper(helperPath, targetPID);
         console.log(`[paste] result=${ok}`);
