@@ -114,6 +114,11 @@ async function handlePaste(id: string) {
 
   queueManager.consumeSnippet(id);
   await persistAndBroadcast();
+
+  if (mainWindow && !mainWindow.isMinimized()) {
+    mainWindow.focus();
+  }
+
   return { success: true } as const;
 }
 
@@ -137,6 +142,26 @@ async function handlePasteNext() {
   queueManager.consumeSnippet(snippet.id);
   await persistAndBroadcast();
   return { success: true, snippet } as const;
+}
+
+async function handlePasteFromArchive(id: string) {
+  const snippet = queueManager.getSnippetFromArchive(id);
+  if (!snippet) return { success: false, error: "Snippet not found" } as const;
+
+  const ok = await pasteOrchestrator.execute(snippet.blocks);
+  if (!ok) {
+    Utils.showNotification({
+      title: "TriamPrompt",
+      body: "Paste failed.",
+    });
+    return { success: false, error: "Paste failed" } as const;
+  }
+
+  if (mainWindow && !mainWindow.isMinimized()) {
+    mainWindow.focus();
+  }
+
+  return { success: true } as const;
 }
 
 function defineRPC() {
@@ -164,7 +189,13 @@ function defineRPC() {
           return { success: ok };
         },
         pasteSnippet: ({ id }) => handlePaste(id),
+        pasteFromArchive: ({ id }) => handlePasteFromArchive(id),
         pasteNextInQueue: () => handlePasteNext(),
+        deleteSnippetFromArchive: async ({ id }) => {
+          const ok = queueManager.deleteFromArchive(id);
+          if (ok) await persistAndBroadcast();
+          return { success: ok };
+        },
         getState: () => queueManager.getState(),
       },
       messages: {},

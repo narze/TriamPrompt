@@ -65,6 +65,16 @@
     if (!electroview) return;
     await electroview.rpc.request.restoreSnippet({ id });
   }
+
+  async function handlePasteFromArchive(id: string) {
+    if (!electroview) return;
+    await electroview.rpc.request.pasteFromArchive({ id });
+  }
+
+  async function handleDeleteFromArchive(id: string) {
+    if (!electroview) return;
+    await electroview.rpc.request.deleteSnippetFromArchive({ id });
+  }
 </script>
 
 <div class="app-shell">
@@ -119,9 +129,9 @@
         <SnippetList
           items={archive}
           mode="archive"
+          onpaste={handlePasteFromArchive}
+          onremove={handleDeleteFromArchive}
           onrestore={handleRestore}
-          onremove={handleRemove}
-          onpaste={() => {}}
           onreorder={() => {}}
         />
       {/if}

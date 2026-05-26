@@ -58,9 +58,17 @@ export type TriamPromptRPC = {
         params: { id: string };
         response: { success: boolean; error?: string };
       };
+      pasteFromArchive: {
+        params: { id: string };
+        response: { success: boolean; error?: string };
+      };
       pasteNextInQueue: {
         params: {};
         response: { success: boolean; error?: string; snippet?: Snippet };
+      };
+      deleteSnippetFromArchive: {
+        params: { id: string };
+        response: { success: boolean };
       };
       getState: {
         params: {};

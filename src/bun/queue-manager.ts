@@ -53,8 +53,21 @@ export class QueueManager {
   removeSnippet(id: string): boolean {
     const index = this.queue.findIndex((s) => s.id === id);
     if (index === -1) return false;
-    this.queue.splice(index, 1);
+    const [snippet] = this.queue.splice(index, 1);
+    snippet.consumedAt = Date.now();
+    this.archive.push(snippet);
     return true;
+  }
+
+  deleteFromArchive(id: string): boolean {
+    const index = this.archive.findIndex((s) => s.id === id);
+    if (index === -1) return false;
+    this.archive.splice(index, 1);
+    return true;
+  }
+
+  getSnippetFromArchive(id: string): Snippet | null {
+    return this.archive.find((s) => s.id === id) ?? null;
   }
 
   addSnippet(blocks: Block[]): Snippet {

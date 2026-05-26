@@ -52,7 +52,7 @@ describe("QueueManager", () => {
   });
 
   describe("removeSnippet", () => {
-    it("removes a snippet from the queue by ID", () => {
+    it("removes snippet from queue and moves to archive", () => {
       const manager = new QueueManager();
       const snippet = manager.addSnippet([textBlock("remove me")]);
 
@@ -60,6 +60,9 @@ describe("QueueManager", () => {
 
       expect(result).toBe(true);
       expect(manager.getState().queue).toHaveLength(0);
+      expect(manager.getState().archive).toHaveLength(1);
+      expect(manager.getState().archive[0].id).toBe(snippet.id);
+      expect(manager.getState().archive[0].consumedAt).toBeNumber();
     });
 
     it("returns false for non-existent ID", () => {
@@ -70,7 +73,7 @@ describe("QueueManager", () => {
       expect(result).toBe(false);
     });
 
-    it("only removes from queue, not archive", () => {
+    it("does not affect archive items", () => {
       const manager = new QueueManager({
         queue: [],
         archive: [
@@ -215,6 +218,44 @@ describe("QueueManager", () => {
       const result = manager.restoreSnippet(snippet.id);
 
       expect(result).toBe(false);
+    });
+  });
+
+  describe("deleteFromArchive", () => {
+    it("permanently removes snippet from archive", () => {
+      const manager = new QueueManager();
+      const snippet = manager.addSnippet([textBlock("to delete")]);
+      manager.consumeSnippet(snippet.id);
+
+      expect(manager.getState().archive).toHaveLength(1);
+
+      const result = manager.deleteFromArchive(snippet.id);
+
+      expect(result).toBe(true);
+      expect(manager.getState().archive).toHaveLength(0);
+      expect(manager.getState().queue).toHaveLength(0);
+    });
+
+    it("returns false for non-existent ID", () => {
+      const manager = new QueueManager();
+
+      const result = manager.deleteFromArchive("nowhere");
+
+      expect(result).toBe(false);
+    });
+
+    it("does not affect queue items", () => {
+      const manager = new QueueManager();
+      const queueItem = manager.addSnippet([textBlock("in queue")]);
+      const archiveItem = manager.addSnippet([textBlock("will archive")]);
+      manager.consumeSnippet(archiveItem.id);
+
+      const result = manager.deleteFromArchive(archiveItem.id);
+
+      expect(result).toBe(true);
+      expect(manager.getState().archive).toHaveLength(0);
+      expect(manager.getState().queue).toHaveLength(1);
+      expect(manager.getState().queue[0].id).toBe(queueItem.id);
     });
   });
 });
