@@ -7,11 +7,12 @@ import Electrobun, {
   Updater,
 } from "electrobun/bun";
 import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { QueueManager } from "./queue-manager";
 import { Persistence } from "./persistence";
 import { PasteOrchestrator } from "./paste-orchestrator";
 import { ensurePasteHelper, runPasteHelper } from "./paste-helper";
+import { ensureFocusWatcher, startFocusWatcher } from "./focus-watcher";
 import type { TriamPromptRPC } from "../shared/types";
 
 const DEV_SERVER_PORT = 5173;
@@ -25,6 +26,9 @@ let pasteOrchestrator: PasteOrchestrator;
 let mainWindow: BrowserWindow | null = null;
 let shortcuts = { toggle: DEFAULT_TOGGLE, pasteNext: DEFAULT_PASTE };
 let mainViewUrl = "";
+
+let lastFocusedAppPID: number | null = null;
+let focusWatcherStop: (() => void) | null = null;
 
 async function getMainViewUrl(): Promise<string> {
   const channel = await Updater.localInfo.channel();
@@ -73,6 +77,19 @@ function getPasteCommand(): string[] {
   return ["xdotool", "key", "ctrl+v"];
 }
 
+function getInitialFrontmostPID(myPid: number): number | null {
+  const proc = Bun.spawnSync({
+    cmd: ["osascript", "-e", 'tell application "System Events" to return unix id of first application process whose frontmost is true'],
+    stdout: "pipe",
+    stderr: "ignore",
+  });
+  if (proc.exitCode === 0) {
+    const pid = parseInt(new TextDecoder().decode(proc.stdout).trim());
+    if (!isNaN(pid) && pid > 0 && pid !== myPid) return pid;
+  }
+  return null;
+}
+
 function getHelperDir(): string {
   const dir = join(Utils.paths.userData, "bin");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -80,6 +97,8 @@ function getHelperDir(): string {
 }
 
 async function handlePaste(id: string) {
+  console.log(`[paste] handlePaste id=${id.slice(0,8)} storedPID=${lastFocusedAppPID}`);
+
   const state = queueManager.getState();
   const snippet = state.queue.find((s) => s.id === id);
   if (!snippet) return { success: false, error: "Snippet not found" } as const;
@@ -99,6 +118,7 @@ async function handlePaste(id: string) {
 }
 
 async function handlePasteNext() {
+  console.log(`[paste] handlePasteNext storedPID=${lastFocusedAppPID}`);
   const state = queueManager.getState();
   if (state.queue.length === 0)
     return { success: false, error: "Queue is empty" } as const;
@@ -194,15 +214,19 @@ function createWindow(): BrowserWindow {
 }
 
 function toggleWindow() {
+  console.log(`[paste] toggleWindow, storedPID=${lastFocusedAppPID}`);
   if (!mainWindow) {
+    console.log(`[paste] creating window`);
     mainWindow = createWindow();
     broadcastState();
     return;
   }
   if (mainWindow.isMinimized()) {
+    console.log(`[paste] unminimizing`);
     mainWindow.unminimize();
     mainWindow.focus();
   } else {
+    console.log(`[paste] minimizing`);
     mainWindow.minimize();
   }
 }
@@ -252,8 +276,15 @@ async function main() {
     sendPasteKeystroke: async () => {
       if (process.platform === "darwin") {
         const helperPath = ensurePasteHelper(getHelperDir());
-        if (!helperPath) return false;
-        return runPasteHelper(helperPath);
+        if (!helperPath) {
+          console.error("[paste] helper not available");
+          return false;
+        }
+        const targetPID = lastFocusedAppPID ?? undefined;
+        console.log(`[paste] CGEventPostToPid target=${targetPID}`);
+        const ok = await runPasteHelper(helperPath, targetPID);
+        console.log(`[paste] result=${ok}`);
+        return ok;
       }
       try {
         const cmd = getPasteCommand();
@@ -278,7 +309,21 @@ async function main() {
 
   broadcastState();
 
+  const watcherPath = ensureFocusWatcher(getHelperDir());
+  if (watcherPath) {
+    const myPid = process.pid;
+    lastFocusedAppPID = getInitialFrontmostPID(myPid);
+    console.log(`[focus-watcher] initial pid=${lastFocusedAppPID}`);
+    focusWatcherStop = startFocusWatcher(watcherPath, myPid, (pid: number) => {
+      lastFocusedAppPID = pid;
+      console.log(`[focus-watcher] app switched → pid=${pid}`);
+    }).stop;
+  } else {
+    console.error("[focus-watcher] failed to start — paste target tracking disabled");
+  }
+
   Electrobun.events.on("before-quit", async () => {
+    focusWatcherStop?.();
     await persistence.save({
       ...queueManager.getState(),
       shortcuts,

@@ -1,30 +1,31 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+
+const HELPER_VERSION = "10";
 
 const SWIFT_SOURCE = `import Cocoa
 
 let args = CommandLine.arguments
-if args.count > 1 {
-    let ourName = args[1]
-    if let prev = NSWorkspace.shared.runningApplications
-        .first(where: { app in
-            !app.isHidden &&
-            app.activationPolicy == .regular &&
-            app.localizedName != ourName
-        }) {
-        prev.activate(options: .activateIgnoringOtherApps)
-        usleep(50000)
+
+if args.count > 1, let targetPid = pid_t(args[1]) {
+    if let targetApp = NSRunningApplication(processIdentifier: targetPid) {
+        let ok = targetApp.activate(options: [.activateIgnoringOtherApps])
+        if !ok {
+            FileHandle.standardError.write(Data("activate failed for pid \\(targetPid)\\n".utf8))
+        }
     }
 }
 
-let src = CGEventSource(stateID: .combinedSessionState)
+usleep(100000)
 
+let src = CGEventSource(stateID: .combinedSessionState)
 let d = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true)!
 d.flags = .maskCommand
-d.post(tap: .cghidEventTap)
-
 let u = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: false)!
 u.flags = .maskCommand
+
+d.post(tap: .cghidEventTap)
+usleep(50000)
 u.post(tap: .cghidEventTap)
 `;
 
@@ -34,9 +35,15 @@ export function ensurePasteHelper(helperDir: string): string | null {
   if (cachedPath) return cachedPath;
 
   const helperPath = join(helperDir, "paste-helper");
+  const versionPath = join(helperDir, "paste-helper.version");
+
   if (existsSync(helperPath)) {
-    cachedPath = helperPath;
-    return helperPath;
+    try {
+      if (existsSync(versionPath) && readFileSync(versionPath, "utf-8").trim() === HELPER_VERSION) {
+        cachedPath = helperPath;
+        return helperPath;
+      }
+    } catch {}
   }
 
   const srcPath = join(helperDir, "paste-helper.swift");
@@ -56,18 +63,21 @@ export function ensurePasteHelper(helperDir: string): string | null {
     return null;
   }
 
+  Bun.write(versionPath, HELPER_VERSION);
+
   cachedPath = helperPath;
   return helperPath;
 }
 
-export function runPasteHelper(helperPath: string): Promise<boolean> {
+export function runPasteHelper(helperPath: string, targetPID?: number): Promise<boolean> {
   return new Promise((resolve) => {
+    const args = targetPID !== undefined ? [helperPath, String(targetPID)] : [helperPath];
     const proc = Bun.spawn({
-      cmd: [helperPath, "TriamPrompt"],
-      stdout: "ignore",
-      stderr: "ignore",
-      onExit: (_proc, exitCode) => {
-        resolve(exitCode === 0);
+      cmd: args,
+      stdout: "inherit",
+      stderr: "inherit",
+      onExit: (_proc, exitCode, signal) => {
+        resolve(exitCode === 0 && signal === null);
       },
     });
   });
