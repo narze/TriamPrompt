@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { QueueManager } from "./queue-manager";
 import { Persistence } from "./persistence";
 import { PasteOrchestrator } from "./paste-orchestrator";
+import { ensurePasteHelper, runPasteHelper } from "./paste-helper";
 import type { TriamPromptRPC } from "../shared/types";
 
 const DEV_SERVER_PORT = 5173;
@@ -67,22 +68,21 @@ async function persistAndBroadcast() {
 
 function getPasteCommand(): string[] {
   const p = process.platform;
-  if (p === "darwin")
-    return ["osascript", "-e", 'tell application "System Events" to keystroke "v" using command down'];
   if (p === "win32")
     return ["powershell", "-Command", "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('^v')"];
   return ["xdotool", "key", "ctrl+v"];
+}
+
+function getHelperDir(): string {
+  const dir = join(Utils.paths.userData, "bin");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 async function handlePaste(id: string) {
   const state = queueManager.getState();
   const snippet = state.queue.find((s) => s.id === id);
   if (!snippet) return { success: false, error: "Snippet not found" } as const;
-
-  if (mainWindow && !mainWindow.isMinimized()) {
-    mainWindow.minimize();
-    await new Promise((r) => setTimeout(r, 300));
-  }
 
   const ok = await pasteOrchestrator.execute(snippet.blocks);
   if (!ok) {
@@ -104,11 +104,6 @@ async function handlePasteNext() {
     return { success: false, error: "Queue is empty" } as const;
 
   const snippet = state.queue[0];
-
-  if (mainWindow && !mainWindow.isMinimized()) {
-    mainWindow.minimize();
-    await new Promise((r) => setTimeout(r, 300));
-  }
 
   const ok = await pasteOrchestrator.execute(snippet.blocks);
   if (!ok) {
@@ -255,6 +250,11 @@ async function main() {
     writeText: (text) => Utils.clipboardWriteText(text),
     writeImage: (data) => Utils.clipboardWriteImage(data),
     sendPasteKeystroke: async () => {
+      if (process.platform === "darwin") {
+        const helperPath = ensurePasteHelper(getHelperDir());
+        if (!helperPath) return false;
+        return runPasteHelper(helperPath);
+      }
       try {
         const cmd = getPasteCommand();
         const proc = Bun.spawn({ cmd, stdout: "ignore", stderr: "ignore" });
