@@ -27,6 +27,7 @@ export interface PersistedData {
     toggle: string;
     pasteNext: string;
   };
+  refocusAfterPaste?: boolean;
   windowPosition?: {
     x: number;
     y: number;
@@ -70,6 +71,14 @@ export type TriamPromptRPC = {
         params: { id: string };
         response: { success: boolean };
       };
+      getSettings: {
+        params: {};
+        response: { toggle: string; pasteNext: string; refocusAfterPaste: boolean };
+      };
+      updateSettings: {
+        params: { toggle?: string; pasteNext?: string; refocusAfterPaste?: boolean };
+        response: { success: boolean; error?: string };
+      };
       getState: {
         params: {};
         response: { queue: Snippet[]; archive: Snippet[] };
@@ -79,6 +88,11 @@ export type TriamPromptRPC = {
       stateChanged: {
         queue: Snippet[];
         archive: Snippet[];
+      };
+      shortcutsUpdated: {
+        toggle: string;
+        pasteNext: string;
+        refocusAfterPaste: boolean;
       };
     };
   }>;

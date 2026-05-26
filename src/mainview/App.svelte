@@ -3,14 +3,19 @@
   import type { TriamPromptRPC, Snippet, Block } from "../../shared/types";
   import Composer from "./Composer.svelte";
   import SnippetList from "./SnippetList.svelte";
+  import Settings from "./Settings.svelte";
 
   let queue = $state<Snippet[]>([]);
   let archive = $state<Snippet[]>([]);
-  let activeTab = $state<"queue" | "archive">("queue");
+  let activeTab = $state<"queue" | "archive" | "settings">("queue");
   let rpcReady = $state(false);
   let rpcError = $state<string | null>(null);
 
-  let electroview: Electroview | null = null;
+  let shortcutToggle = $state("CommandOrControl+Shift+Space");
+  let shortcutPasteNext = $state("CommandOrControl+Shift+V");
+  let refocusAfterPaste = $state(false);
+
+  let electroview = $state<Electroview | null>(null);
 
   try {
     const rpc = Electroview.defineRPC<TriamPromptRPC>({
@@ -20,6 +25,11 @@
           stateChanged: ({ queue: q, archive: a }) => {
             queue = q;
             archive = a;
+          },
+          shortcutsUpdated: ({ toggle: t, pasteNext: p, refocusAfterPaste: r }) => {
+            shortcutToggle = t;
+            shortcutPasteNext = p;
+            refocusAfterPaste = r;
           },
         },
       },
@@ -37,6 +47,11 @@
       electroview.rpc.request.getState({}).then((state) => {
         queue = state.queue;
         archive = state.archive;
+      });
+      electroview.rpc.request.getSettings({}).then((s) => {
+        shortcutToggle = s.toggle;
+        shortcutPasteNext = s.pasteNext;
+        refocusAfterPaste = s.refocusAfterPaste;
       });
     }
   });
@@ -102,6 +117,11 @@
           <span class="badge">{archive.length}</span>
         {/if}
       </button>
+      <button
+        class="tab settings-tab"
+        class:active={activeTab === "settings"}
+        onclick={() => (activeTab = "settings")}
+      >&#9881;</button>
     </div>
   </header>
 
@@ -125,7 +145,7 @@
           onremove={handleRemove}
           onreorder={handleReorder}
         />
-      {:else}
+      {:else if activeTab === "archive"}
         <SnippetList
           items={archive}
           mode="archive"
@@ -133,6 +153,13 @@
           onremove={handleDeleteFromArchive}
           onrestore={handleRestore}
           onreorder={() => {}}
+        />
+      {:else if activeTab === "settings"}
+        <Settings
+          {electroview}
+          toggle={shortcutToggle}
+          pasteNext={shortcutPasteNext}
+          refocus={refocusAfterPaste}
         />
       {/if}
     </div>
@@ -204,6 +231,11 @@
     padding: 1px 6px;
     border-radius: 10px;
     font-weight: 600;
+  }
+
+  .settings-tab {
+    font-size: 14px;
+    padding: 4px 8px;
   }
 
   .loading {

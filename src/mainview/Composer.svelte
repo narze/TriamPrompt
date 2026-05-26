@@ -4,24 +4,8 @@
   let { oncommit = (_blocks: Block[]) => {} }: { oncommit?: (blocks: Block[]) => void } =
     $props();
 
-  interface ComposerBlock {
-    id: string;
-    type: "text" | "image";
-    content: string;
-  }
-
-  let blocks = $state<ComposerBlock[]>([
-    { id: crypto.randomUUID(), type: "text", content: "" },
-  ]);
-
-  function addTextBlock() {
-    blocks.push({ id: crypto.randomUUID(), type: "text", content: "" });
-  }
-
-  function removeBlock(id: string) {
-    if (blocks.length <= 1) return;
-    blocks = blocks.filter((b) => b.id !== id);
-  }
+  let text = $state("");
+  let image: string | null = $state(null);
 
   function handlePaste(e: ClipboardEvent) {
     const items = e.clipboardData?.items;
@@ -35,17 +19,17 @@
         const reader = new FileReader();
         reader.onload = () => {
           const result = reader.result as string;
-          const base64 = result.split(",")[1];
-          blocks = [
-            ...blocks,
-            { id: crypto.randomUUID(), type: "image", content: base64 },
-          ];
+          image = result.split(",")[1];
         };
         reader.readAsDataURL(blob);
         e.preventDefault();
         return;
       }
     }
+  }
+
+  function removeImage() {
+    image = null;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -56,57 +40,40 @@
   }
 
   function commitSnippet() {
-    const validBlocks: Block[] = [];
-    for (const b of blocks) {
-      if (b.type === "text" && b.content.trim().length === 0) continue;
-      if (b.type === "image") {
-        validBlocks.push({ type: "image", content: b.content });
-      } else {
-        validBlocks.push({ type: "text", content: b.content });
-      }
-    }
+    const blocks: Block[] = [];
+    if (text.trim().length > 0) blocks.push({ type: "text", content: text });
+    if (image) blocks.push({ type: "image", content: image });
 
-    if (validBlocks.length === 0) return;
+    if (blocks.length === 0) return;
 
-    oncommit(validBlocks);
-    blocks = [{ id: crypto.randomUUID(), type: "text", content: "" }];
+    oncommit(blocks);
+    text = "";
+    image = null;
   }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="composer" onpaste={handlePaste} onkeydown={handleKeydown}>
-  <div class="blocks">
-    {#each blocks as block (block.id)}
-      <div class="block">
-        {#if block.type === "text"}
-          <textarea
-            class="text-block"
-            placeholder="Type a prompt..."
-            rows={Math.max(2, block.content.split("\n").length)}
-            bind:value={block.content}
-          ></textarea>
-        {:else}
-          <div class="image-block">
-            <img
-              class="thumbnail"
-              src={"data:image/png;base64," + block.content}
-              alt=""
-            />
-            <span class="image-label">Image</span>
-          </div>
-        {/if}
+  <textarea
+    class="text-input"
+    placeholder="Type a prompt..."
+    rows={Math.max(2, text.split("\n").length)}
+    bind:value={text}
+  ></textarea>
 
-        {#if blocks.length > 1}
-          <button class="remove-block" onclick={() => removeBlock(block.id)}>
-            &#10005;
-          </button>
-        {/if}
-      </div>
-    {/each}
-  </div>
+  {#if image}
+    <div class="image-preview">
+      <img
+        class="thumbnail"
+        src={"data:image/png;base64," + image}
+        alt=""
+      />
+      <span class="image-label">Image</span>
+      <button class="remove-img" onclick={removeImage}>&#10005;</button>
+    </div>
+  {/if}
 
   <div class="composer-actions">
-    <button class="add-btn" onclick={addTextBlock}>+ Text Block</button>
     <button class="commit-btn" onclick={commitSnippet}>
       Add to Queue (Cmd+Enter)
     </button>
@@ -120,26 +87,14 @@
     padding: 8px;
   }
 
-  .blocks {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 8px;
-    max-height: 200px;
-    overflow-y: auto;
-  }
-
-  .block {
-    position: relative;
-  }
-
-  .text-block {
+  .text-input {
     width: 100%;
     min-height: 40px;
-    max-height: 100px;
+    max-height: 120px;
+    box-sizing: border-box;
   }
 
-  .image-block {
+  .image-preview {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -147,6 +102,7 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 6px 8px;
+    margin-top: 6px;
   }
 
   .thumbnail {
@@ -159,12 +115,10 @@
   .image-label {
     font-size: 11px;
     color: var(--text-muted);
+    flex: 1;
   }
 
-  .remove-block {
-    position: absolute;
-    top: 4px;
-    right: 4px;
+  .remove-img {
     background: var(--danger);
     color: white;
     width: 20px;
@@ -174,30 +128,10 @@
     justify-content: center;
     font-size: 10px;
     border-radius: 50%;
-    opacity: 0;
-    transition: opacity 0.15s;
-  }
-
-  .block:hover .remove-block {
-    opacity: 1;
   }
 
   .composer-actions {
-    display: flex;
-    gap: 6px;
-    justify-content: space-between;
-  }
-
-  .add-btn {
-    background: var(--surface-hover);
-    color: var(--text-muted);
-    padding: 6px 12px;
-    font-size: 12px;
-  }
-
-  .add-btn:hover {
-    background: var(--border);
-    color: var(--text);
+    margin-top: 8px;
   }
 
   .commit-btn {
@@ -206,7 +140,7 @@
     padding: 6px 16px;
     font-size: 12px;
     font-weight: 600;
-    flex: 1;
+    width: 100%;
     text-align: center;
   }
 

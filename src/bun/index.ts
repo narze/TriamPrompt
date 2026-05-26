@@ -29,6 +29,7 @@ let mainViewUrl = "";
 
 let lastFocusedAppPID: number | null = null;
 let focusWatcherStop: (() => void) | null = null;
+let refocusAfterPaste = false;
 
 async function getMainViewUrl(): Promise<string> {
   const channel = await Updater.localInfo.channel();
@@ -115,7 +116,7 @@ async function handlePaste(id: string) {
   queueManager.consumeSnippet(id);
   await persistAndBroadcast();
 
-  if (mainWindow && !mainWindow.isMinimized()) {
+  if (mainWindow && !mainWindow.isMinimized() && refocusAfterPaste) {
     mainWindow.focus();
   }
 
@@ -157,7 +158,7 @@ async function handlePasteFromArchive(id: string) {
     return { success: false, error: "Paste failed" } as const;
   }
 
-  if (mainWindow && !mainWindow.isMinimized()) {
+  if (mainWindow && !mainWindow.isMinimized() && refocusAfterPaste) {
     mainWindow.focus();
   }
 
@@ -195,6 +196,28 @@ function defineRPC() {
           const ok = queueManager.deleteFromArchive(id);
           if (ok) await persistAndBroadcast();
           return { success: ok };
+        },
+        getSettings: () => ({ ...shortcuts, refocusAfterPaste }),
+        updateSettings: async ({ toggle, pasteNext, refocusAfterPaste: refocus }) => {
+          try {
+            if (refocus !== undefined) refocusAfterPaste = refocus;
+            if (toggle && pasteNext) {
+              reregisterShortcuts({ toggle, pasteNext });
+            }
+            await persistence.save({
+              ...queueManager.getState(),
+              shortcuts,
+              refocusAfterPaste,
+              windowPosition: getWindowPosition(),
+            });
+            mainWindow?.webview.rpc.send.shortcutsUpdated({
+              ...shortcuts,
+              refocusAfterPaste,
+            });
+            return { success: true };
+          } catch (e: any) {
+            return { success: false, error: String(e.message ?? e) };
+          }
         },
         getState: () => queueManager.getState(),
       },
@@ -275,6 +298,12 @@ function registerShortcuts() {
   });
 }
 
+function reregisterShortcuts(newShortcuts: { toggle: string; pasteNext: string }) {
+  GlobalShortcut.unregisterAll();
+  shortcuts = newShortcuts;
+  registerShortcuts();
+}
+
 function createTray() {
   const tray = new Tray({ title: "TriamPrompt" });
   tray.setMenu([
@@ -300,6 +329,7 @@ async function main() {
   const data = await persistence.load();
   queueManager = new QueueManager({ queue: data.queue, archive: data.archive });
   shortcuts = data.shortcuts;
+  refocusAfterPaste = data.refocusAfterPaste ?? false;
 
   pasteOrchestrator = new PasteOrchestrator({
     writeText: (text) => Utils.clipboardWriteText(text),
@@ -358,6 +388,7 @@ async function main() {
     await persistence.save({
       ...queueManager.getState(),
       shortcuts,
+      refocusAfterPaste,
       windowPosition: getWindowPosition(),
     });
     GlobalShortcut.unregisterAll();
