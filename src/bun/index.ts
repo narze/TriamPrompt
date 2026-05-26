@@ -409,7 +409,7 @@ async function main() {
 
   ApplicationMenu.setApplicationMenu([
     {
-      submenu: [{ role: "quit" }],
+      submenu: [{ label: "Quit", role: "quit", accelerator: "q" }],
     },
     {
       label: "Edit",
