@@ -6,13 +6,10 @@
 
   let text = $state("");
   let image: string | null = $state(null);
-  let textareaRef: HTMLTextAreaElement | undefined = $state();
 
   function handlePaste(e: ClipboardEvent) {
     const items = e.clipboardData?.items;
     if (!items) return;
-
-    let hasImage = false;
 
     for (const item of items) {
       if (item.type.startsWith("image/")) {
@@ -26,23 +23,8 @@
         };
         reader.readAsDataURL(blob);
         e.preventDefault();
-        hasImage = true;
+        return;
       }
-    }
-
-    if (!hasImage && textareaRef) {
-      e.preventDefault();
-      const pastedText = e.clipboardData?.getData("text/plain") ?? "";
-      const ta = textareaRef;
-      const start = ta.selectionStart ?? 0;
-      const end = ta.selectionEnd ?? 0;
-      const before = text.slice(0, start);
-      const after = text.slice(end);
-      text = before + pastedText + after;
-      requestAnimationFrame(() => {
-        const pos = start + pastedText.length;
-        ta.setSelectionRange(pos, pos);
-      });
     }
   }
 
@@ -77,7 +59,6 @@
     placeholder="Type a prompt..."
     rows={Math.max(2, text.split("\n").length)}
     bind:value={text}
-    bind:this={textareaRef}
   ></textarea>
 
   {#if image}

@@ -5,6 +5,7 @@ import Electrobun, {
   Utils,
   GlobalShortcut,
   Updater,
+  ApplicationMenu,
 } from "electrobun/bun";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -405,6 +406,26 @@ async function main() {
 
   registerShortcuts();
   createTray();
+
+  ApplicationMenu.setApplicationMenu([
+    {
+      submenu: [{ role: "quit" }],
+    },
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "pasteAndMatchStyle" },
+        { role: "delete" },
+        { role: "selectAll" },
+      ],
+    },
+  ]);
 
   broadcastState();
 
