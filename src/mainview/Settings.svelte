@@ -34,14 +34,20 @@
   function formatShortcut(accel: string): string {
     return accel
       .replace("CommandOrControl", navigator.platform.includes("Mac") ? "Cmd" : "Ctrl")
+      .replace("Command", "Cmd")
+      .replace("Control", "Ctrl")
       .replace("+", " + ");
   }
 
   function shortcutToAccel(display: string): string {
-    return display
-      .replace("Cmd", "CommandOrControl")
-      .replace("Ctrl", "CommandOrControl")
-      .replace(/\s*\+\s*/g, "+");
+    let parts = display.split(/\s*\+\s*/).map((p) => p.trim());
+    const result = parts.map((part) => {
+      if (part === "Cmd") return "CommandOrControl";
+      if (part === "Ctrl") return "Control";
+      if (part === "Space") return "Space";
+      return part;
+    });
+    return result.join("+");
   }
 
   function startRecording(field: "toggle" | "pasteNext") {
