@@ -30,6 +30,7 @@ let mainViewUrl = "";
 let lastFocusedAppPID: number | null = null;
 let focusWatcherStop: (() => void) | null = null;
 let refocusAfterPaste = false;
+let pasting = false;
 
 async function getMainViewUrl(): Promise<string> {
   const channel = await Updater.localInfo.channel();
@@ -98,71 +99,108 @@ function getHelperDir(): string {
 }
 
 async function handlePaste(id: string) {
-  console.log(`[paste] handlePaste id=${id.slice(0,8)} storedPID=${lastFocusedAppPID}`);
-
-  const state = queueManager.getState();
-  const snippet = state.queue.find((s) => s.id === id);
-  if (!snippet) return { success: false, error: "Snippet not found" } as const;
-
-  const ok = await pasteOrchestrator.execute(snippet.blocks);
-  if (!ok) {
-    Utils.showNotification({
-      title: "TriamPrompt",
-      body: "Paste failed. Snippet remains in queue.",
-    });
-    return { success: false, error: "Paste failed" } as const;
+  if (pasting) {
+    console.log("[paste] blocked: already pasting");
+    return { success: false, error: "A paste is already in progress" } as const;
   }
+  pasting = true;
 
-  queueManager.consumeSnippet(id);
-  await persistAndBroadcast();
+  try {
+    console.log(`[paste] handlePaste id=${id.slice(0,8)} storedPID=${lastFocusedAppPID}`);
 
-  if (mainWindow && !mainWindow.isMinimized() && refocusAfterPaste) {
-    mainWindow.focus();
+    const state = queueManager.getState();
+    const snippet = state.queue.find((s) => s.id === id);
+    if (!snippet) {
+      console.log(`[paste] snippet ${id.slice(0,8)} not found in queue`);
+      return { success: false, error: "Snippet not found" } as const;
+    }
+
+    const ok = await pasteOrchestrator.execute(snippet.blocks);
+    if (!ok) {
+      Utils.showNotification({
+        title: "TriamPrompt",
+        body: "Paste failed. Snippet remains in queue.",
+      });
+      return { success: false, error: "Paste failed" } as const;
+    }
+
+    queueManager.consumeSnippet(id);
+    await persistAndBroadcast();
+
+    if (mainWindow && !mainWindow.isMinimized() && refocusAfterPaste) {
+      mainWindow.focus();
+    }
+
+    console.log(`[paste] done id=${id.slice(0,8)}`);
+    return { success: true } as const;
+  } finally {
+    pasting = false;
   }
-
-  return { success: true } as const;
 }
 
 async function handlePasteNext() {
-  console.log(`[paste] handlePasteNext storedPID=${lastFocusedAppPID}`);
-  const state = queueManager.getState();
-  if (state.queue.length === 0)
-    return { success: false, error: "Queue is empty" } as const;
-
-  const snippet = state.queue[0];
-
-  const ok = await pasteOrchestrator.execute(snippet.blocks);
-  if (!ok) {
-    Utils.showNotification({
-      title: "TriamPrompt",
-      body: "Paste failed. Snippet remains in queue.",
-    });
-    return { success: false, error: "Paste failed" } as const;
+  if (pasting) {
+    console.log("[paste] blocked: already pasting");
+    return { success: false, error: "A paste is already in progress" } as const;
   }
+  pasting = true;
 
-  queueManager.consumeSnippet(snippet.id);
-  await persistAndBroadcast();
-  return { success: true, snippet } as const;
+  try {
+    console.log(`[paste] handlePasteNext storedPID=${lastFocusedAppPID}`);
+    const state = queueManager.getState();
+    if (state.queue.length === 0)
+      return { success: false, error: "Queue is empty" } as const;
+
+    const snippet = state.queue[0];
+
+    const ok = await pasteOrchestrator.execute(snippet.blocks);
+    if (!ok) {
+      Utils.showNotification({
+        title: "TriamPrompt",
+        body: "Paste failed. Snippet remains in queue.",
+      });
+      return { success: false, error: "Paste failed" } as const;
+    }
+
+    queueManager.consumeSnippet(snippet.id);
+    await persistAndBroadcast();
+
+    console.log(`[paste] handlePasteNext done id=${snippet.id.slice(0,8)}`);
+    return { success: true, snippet } as const;
+  } finally {
+    pasting = false;
+  }
 }
 
 async function handlePasteFromArchive(id: string) {
-  const snippet = queueManager.getSnippetFromArchive(id);
-  if (!snippet) return { success: false, error: "Snippet not found" } as const;
-
-  const ok = await pasteOrchestrator.execute(snippet.blocks);
-  if (!ok) {
-    Utils.showNotification({
-      title: "TriamPrompt",
-      body: "Paste failed.",
-    });
-    return { success: false, error: "Paste failed" } as const;
+  if (pasting) {
+    console.log("[paste] blocked: already pasting");
+    return { success: false, error: "A paste is already in progress" } as const;
   }
+  pasting = true;
 
-  if (mainWindow && !mainWindow.isMinimized() && refocusAfterPaste) {
-    mainWindow.focus();
+  try {
+    const snippet = queueManager.getSnippetFromArchive(id);
+    if (!snippet) return { success: false, error: "Snippet not found" } as const;
+
+    const ok = await pasteOrchestrator.execute(snippet.blocks);
+    if (!ok) {
+      Utils.showNotification({
+        title: "TriamPrompt",
+        body: "Paste failed.",
+      });
+      return { success: false, error: "Paste failed" } as const;
+    }
+
+    if (mainWindow && !mainWindow.isMinimized() && refocusAfterPaste) {
+      mainWindow.focus();
+    }
+
+    console.log(`[paste] handlePasteFromArchive done id=${id.slice(0,8)}`);
+    return { success: true } as const;
+  } finally {
+    pasting = false;
   }
-
-  return { success: true } as const;
 }
 
 function defineRPC() {

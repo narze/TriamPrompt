@@ -14,6 +14,7 @@
   let shortcutToggle = $state("CommandOrControl+Shift+Space");
   let shortcutPasteNext = $state("CommandOrControl+Shift+V");
   let refocusAfterPaste = $state(false);
+  let pasting = $state(false);
 
   let electroview = $state<Electroview | null>(null);
 
@@ -62,8 +63,13 @@
   }
 
   async function handlePaste(id: string) {
-    if (!electroview) return;
-    await electroview.rpc.request.pasteSnippet({ id });
+    if (!electroview || pasting) return;
+    pasting = true;
+    try {
+      await electroview.rpc.request.pasteSnippet({ id });
+    } finally {
+      pasting = false;
+    }
   }
 
   async function handleRemove(id: string) {
@@ -82,8 +88,13 @@
   }
 
   async function handlePasteFromArchive(id: string) {
-    if (!electroview) return;
-    await electroview.rpc.request.pasteFromArchive({ id });
+    if (!electroview || pasting) return;
+    pasting = true;
+    try {
+      await electroview.rpc.request.pasteFromArchive({ id });
+    } finally {
+      pasting = false;
+    }
   }
 
   async function handleDeleteFromArchive(id: string) {
